@@ -1,4 +1,5 @@
 const { ApolloServer, gql } = require('apollo-server')
+const uuid = require('uuid/v1')
 
 let authors = [
   {
@@ -95,19 +96,67 @@ const typeDefs = gql`
 
   type Author {
     name: String!
+    born: Int
+    id: ID!
     bookCount: Int!
+  }
+
+  type Mutation {
+    addBook(
+      title: String!
+      author: String!
+      published: Int!
+      genres: [String!]
+    ): Book
+
+    editAuthor(
+      name: String!
+      setBornTo: Int!
+    ): Author
+
+
   }
 
   type Query {
     hello: String!
     bookCount: Int!
     authorCount: Int!
-    allBooks(author: String): [Book!]!
+    allBooks(author: String, genre: String): [Book!]!
     allAuthors: [Author!]!
   }
 `
 
 const resolvers = {
+
+
+  Mutation: {
+    addBook: (root, args) => {
+      const book = { ...args, id:uuid() }
+      const filtered = authors.filter(author => author.name === book.author)
+      if(filtered.length === 0){
+        const person = {
+          name: book.author,
+          id: uuid(),
+        }
+        authors = authors.concat(person)
+      }
+      books = books.concat(book)
+      return book
+    },
+
+    editAuthor: (root, args) => {
+        let person = null
+        authors = authors.map(author => {
+          if(author.name === args.name){
+            person = author
+            author.born = args.setBornTo
+          }
+          return author
+        })
+        return person
+    },
+  },
+
   Query: {
     hello: () => { return "world" },
     bookCount: () => books.length,
@@ -115,27 +164,46 @@ const resolvers = {
       const set = new Set()
       const filtered = authors.filter(author => {
         const duplicate = set.has(author.name)
+        set.add(author.name)
         return !duplicate
       })
       return filtered.length
     },
+
     allBooks: (root, args) => books.filter(book => {
-      console.log(args)
       if(isEmpty(args)){
         return book
       }
-      else if(book.author === args.author){
-        return book
+
+      else if(Object.prototype.hasOwnProperty.call(args, 'genre') && Object.prototype.hasOwnProperty.call(args, 'author')){
+        if(book.author === args.author && book.genres.includes(args.genre)){
+          return book
+        }
       }
+      
+      else if (Object.prototype.hasOwnProperty.call(args, 'genre')) { 
+        if(book.genres.includes(args.genre)){
+          return book
+        }
+      }
+
+      else if (Object.prototype.hasOwnProperty.call(args, 'author')) { 
+        if(book.author === args.author){
+          return book
+        }
+      }
+    
+
     }),
+
     allAuthors: () =>  {
       const set = new Set()
       const filtered = authors.filter(author => {
         const duplicate = set.has(author.name)
+        set.add(author.name)
         return !duplicate
       })
-      const test = filtered.map(o => ({bookCount: countBooksOfAuthor(o), ...o}))
-      return test
+      return filtered.map(o => ({bookCount: countBooksOfAuthor(o), ...o}))
     },
   }
 }
