@@ -1,6 +1,22 @@
-const { ApolloServer, gql } = require('apollo-server')
+const { ApolloServer, UserInpuptError, gql } = require('apollo-server')
 const uuid = require('uuid/v1')
+const mongoose = require('mongoose')
+const Author = require('./models/author')
+const Book = require('./models/book')
+const config = require('./utils/config')
+const {ObjectId} = require('mongodb')
 
+mongoose.set('useFindAndModify', false)
+
+mongoose.connect(config.DB_URI, { useNewUrlParser: true })
+  .then(() => {
+    console.log('connected to MongoDB')
+  })
+  .catch((error) => {
+    console.log('error connection to MongoDB:', error.message)
+  })
+
+/*
 let authors = [
   {
     name: 'Robert Martin',
@@ -32,7 +48,7 @@ let authors = [
  * the author id instead of the name to the book.
  * For simplicity we however save the author name.
 */
-
+/*
 let books = [
   {
     title: 'Clean Code',
@@ -83,22 +99,23 @@ let books = [
     id: "afa5de04-344d-11e9-a414-719c6709cf3e",
     genres: ['classic', 'revolution']
   },
-]
+]*/
 
 const typeDefs = gql`
   type Book {
     title: String!
-    published: Int
-    author: String!
-    id: ID!
-    genres: [String!]
+    author: Author!
+    published: Int!
+    id: String!
+    genres: [String]
   }
 
   type Author {
     name: String!
     born: Int
-    id: ID!
-    bookCount: Int
+    bookCount: Int!
+    id: String!
+    
   }
 
   type Mutation {
@@ -106,23 +123,21 @@ const typeDefs = gql`
       title: String!
       author: String!
       published: Int!
-      genres: [String!]
+      genres: [String]
     ): Book
 
     editAuthor(
       name: String!
       setBornTo: Int!
     ): Author
-
-
   }
 
   type Query {
     hello: String!
     bookCount: Int!
     authorCount: Int!
-    allBooks(author: String, genre: String): [Book!]!
-    allAuthors: [Author!]!
+    allBooks(author: String, genre: String): [Book]
+    allAuthors: [Author]
   }
 `
 
@@ -130,80 +145,87 @@ const resolvers = {
 
 
   Mutation: {
-    addBook: (root, args) => {
-      const book = { ...args, id:uuid() }
-      const filtered = authors.filter(author => author.name === book.author)
-      if(filtered.length === 0){
-        const person = {
-          name: book.author,
-          id: uuid(),
-        }
-        authors = authors.concat(person)
+    addBook: async (root, args) => {
+      const author = await Author.find( {name: args.author } )
+      let book = null
+      if (author.length === 0){
+        let newAuthor = new Author({
+          name: args.author,
+          born: null,
+        })
+        newAuthor.save()
+        book = new Book({author: newAuthor.id, title: args.title, published: args.published, genres: args.genres })
+      }else{
+        book = new Book({author: author.id, title: args.title, published: args.published, genres: args.genres })
       }
-      books = books.concat(book)
-      return book
+      return book.save()
+      
     },
 
-    editAuthor: (root, args) => {
-        let person = null
-        authors = authors.map(author => {
-          if(author.name === args.name){
-            person = author
-            author.born = args.setBornTo
-          }
-          return author
+    editAuthor: async (root, args) => {
+        const authors = await Author.find({name: args.name})
+        const newAuthors = authors.map(author => {
+          author.born = args.setBornTo
+          author.save()
+         return author
+          
         })
-        return person
+        return newAuthors[0]
     },
+  },
+
+  Book: {
+    author: async (root) => {
+      console.log("how import am i?")
+      const author = await Author.findById(root.author)
+      return{
+        id: author.id,
+        name: author.name,
+      }
+    }
   },
 
   Query: {
     hello: () => { return "world" },
-    bookCount: () => books.length,
-    authorCount: () => {
-      const set = new Set()
-      const filtered = authors.filter(author => {
-        const duplicate = set.has(author.name)
-        set.add(author.name)
-        return !duplicate
-      })
-      return filtered.length
-    },
+    bookCount: () => Book.collection.countDocuments(),
+    authorCount: () => Author.collection.countDocuments(),
 
-    allBooks: (root, args) => books.filter(book => {
-      if(isEmpty(args)){
-        return book
+    allBooks: async (root, args) => {
+      const books = await Book.find({})
+      let author = null
+      if (Object.prototype.hasOwnProperty.call(args, 'author')){
+        author = await Author.find({name: args.author})
       }
-
-      else if(Object.prototype.hasOwnProperty.call(args, 'genre') && Object.prototype.hasOwnProperty.call(args, 'author')){
-        if(book.author === args.author && book.genres.includes(args.genre)){
-          return book
-        }
-      }
+      return books.filter(book => {
       
-      else if (Object.prototype.hasOwnProperty.call(args, 'genre')) { 
-        if(book.genres.includes(args.genre)){
-          return book
+        if(isEmpty(args)){
+          return books
         }
-      }
 
-      else if (Object.prototype.hasOwnProperty.call(args, 'author')) { 
-        if(book.author === args.author){
-          return book
+        else if(Object.prototype.hasOwnProperty.call(args, 'genre') && Object.prototype.hasOwnProperty.call(args, 'author')){
+          if(book.author.equals(author[0].id) && book.genres.includes(args.genre)){
+            return book
+          }
         }
-      }
-    
+        
+        else if (Object.prototype.hasOwnProperty.call(args, 'genre')) { 
+          if(book.genres.includes(args.genre)){
+            return book
+          }
+        }
 
-    }),
-
-    allAuthors: () =>  {
-      const set = new Set()
-      const filtered = authors.filter(author => {
-        const duplicate = set.has(author.name)
-        set.add(author.name)
-        return !duplicate
+        else if (Object.prototype.hasOwnProperty.call(args, 'author')) { 
+          if(book.author.equals(author[0].id)){
+            return book
+          }
+        }
       })
-      return filtered.map(o => ({bookCount: countBooksOfAuthor(o), ...o}))
+  },
+
+    allAuthors: async () =>  {
+      const authors = await Author.find({})
+      const books = await Book.find({})
+      return authors.map(o => ({born: o.born, bookCount: countBooksOfAuthor(o, books), name: o.name, id: o.id}))
     },
   }
 }
@@ -216,8 +238,8 @@ const isEmpty = (obj) => {
     return true
 }
 
-const countBooksOfAuthor = (arg) => {
-  const filteredBooks = books.filter(book => book.author === arg.name)
+const countBooksOfAuthor = (arg, books) => {
+  const filteredBooks = books.filter(book => book.author.equals(arg.id))
   return filteredBooks.length
 }
 
