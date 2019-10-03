@@ -218,13 +218,13 @@ const resolvers = {
         }
 
         else if(Object.prototype.hasOwnProperty.call(args, 'genre') && Object.prototype.hasOwnProperty.call(args, 'author')){
-          if(book.author.equals(author[0].id) && book.genres.includes(args.genre)){
+          if(book.author.equals(author[0].id) && book.genres[0].includes(args.genre)){
             return book
           }
         }
         
         else if (Object.prototype.hasOwnProperty.call(args, 'genre')) { 
-          if(book.genres.includes(args.genre)){
+          if(book.genres[0].includes(args.genre)){
             return book
           }
         }
