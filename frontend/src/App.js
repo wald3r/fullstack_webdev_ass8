@@ -93,8 +93,10 @@ const App = () => {
 
   useSubscription(BOOK_ADDED, {
     onSubscriptionData: ({ subscriptionData }) => {
+      const addedBook = subscriptionData.data.bookAdded
       console.log(subscriptionData)
       window.alert(`New Book added: ${subscriptionData.data.bookAdded.title}`);
+      updateCacheWith(addedBook)
 
     }
   })
@@ -104,8 +106,8 @@ const App = () => {
       set.map(p => p.id).includes(object.id)  
 
     const dataInStore = client.readQuery({ query: ALL_BOOKS })
-    if (!includedIn(dataInStore.allPersons, addedBook)) {
-      dataInStore.allPersons.push(addedBook)
+    if (!includedIn(dataInStore.allBooks, addedBook)) {
+      dataInStore.allBooks.push(addedBook)
       client.writeQuery({
         query: ALL_BOOKS,
         data: dataInStore
